@@ -29,7 +29,9 @@
   button:hover { border-color: var(--accent); }
   button:disabled { opacity: .4; cursor: default; }
   button.primary { background: var(--accent); color: #101418; border-color: var(--accent); font-weight: 600; }
-  .setting { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dim); }
+  .setting { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
+  .setting label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; user-select: none; }
+  .setting input[type="radio"] { accent-color: var(--accent); cursor: pointer; margin: 0; }
   .setting input { width: 70px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px 7px; font-size: 13px; }
   #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 12px; }
   .card { position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: grab; }
@@ -58,7 +60,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.4.3-dev</div>
+<div class="ver" id="verTag">v0.4.4-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -66,7 +68,12 @@
 <div class="toolbar">
   <button id="autoAll" disabled>✨ 自動偵測全部</button>
   <button id="sortName" disabled>按檔名排序</button>
-  <span class="setting">長邊 <input id="longEdge" type="number" value="1000" min="200" max="4000"> px</span>
+  <span class="setting">
+    <label><input type="radio" name="edgeMode" value="long"> 長邊</label>
+    <label><input type="radio" name="edgeMode" value="width" checked> 寬</label>
+    <label><input type="radio" name="edgeMode" value="height"> 高</label>
+    <input id="longEdge" type="number" value="1000" min="200" max="4000"> px
+  </span>
   <span class="setting">品質 <input id="quality" type="number" value="0.35" min="0.05" max="1" step="0.05"></span>
   <button id="export" class="primary" disabled>產出 PDF</button>
   <button id="exportZip" disabled>產出 ZIP（校正圖）</button>
@@ -580,7 +587,12 @@ async function renderPage(p, longEdge, quality) {
     workCanvas = imageDataToCanvas(r.imageData);
   }
   const final = document.createElement("canvas");
-  const s = Math.min(1, longEdge / Math.max(workCanvas.width, workCanvas.height));
+  /* 依 edgeMode 決定基準：long=長邊（預設）、width=寬、height=高；只縮不放大 */
+  const { mode, v } = typeof longEdge === "object" ? longEdge : { mode: "long", v: longEdge };
+  const cur = mode === "width" ? workCanvas.width
+            : mode === "height" ? workCanvas.height
+            : Math.max(workCanvas.width, workCanvas.height);
+  const s = Math.min(1, v / cur);
   final.width = Math.max(1, Math.round(workCanvas.width * s));
   final.height = Math.max(1, Math.round(workCanvas.height * s));
   final.getContext("2d").drawImage(workCanvas, 0, 0, final.width, final.height);
@@ -603,8 +615,15 @@ function blobToDataUrl(blob) {
   });
 }
 
+function sizeSetting() {
+  const mode = document.querySelector('input[name="edgeMode"]:checked')?.value || "width";
+  const v = Math.max(200, +$("longEdge").value || 1000);
+  return { mode, v };
+}
+
 $( "export" ).onclick = async () => {
-  const longEdge = Math.max(200, +$("longEdge").value || 1000);
+  const size = sizeSetting();
+  const longEdge = size;
   const quality = Math.min(1, Math.max(0.05, +$("quality").value || 0.35));
   if (!photos.length) return;
   const { jsPDF } = window.jspdf;
@@ -641,7 +660,8 @@ $( "export" ).onclick = async () => {
 
 /* ── 產出 ZIP：校正後的 JPEG 一張一檔 ── */
 $("exportZip").onclick = async () => {
-  const longEdge = Math.max(200, +$("longEdge").value || 1000);
+  const size = sizeSetting();
+  const longEdge = size;
   const quality = Math.min(1, Math.max(0.05, +$("quality").value || 0.35));
   if (!photos.length) return;
   if (!window.JSZip) { setStatus("JSZip 沒載到（需要網路）——重新整理再試。"); return; }
