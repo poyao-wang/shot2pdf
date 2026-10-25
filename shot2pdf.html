@@ -56,7 +56,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.2.1-dev</div>
+<div class="ver" id="verTag">v0.3.0-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -263,8 +263,39 @@ function makeThumb(bmp, edge) {
 /* ── 縮圖牆 ── */
 const HANDLE_COLORS = ["#f28b82", "#fdd663", "#81c995", "#8ab4f8"];
 
-function render() {
+/* 已套用四角的照片：縮圖換成「校正後」的樣子（worker warp → 小圖 dataURL） */
+async function refreshWarpedThumb(i) {
+  const p = photos[i];
+  if (!p.corners) return;
+  try {
+    const { canvas } = await decodeToCanvas(p, 1600);
+    const ctx = canvas.getContext("2d");
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const r = await workerJob("warp", { imageData, corners: p.corners }, [imageData.data.buffer]);
+    const out = imageDataToCanvas(r.imageData);
+    const s = 300 / Math.max(out.width, out.height);
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(out.width * s));
+    c.height = Math.max(1, Math.round(out.height * s));
+    c.getContext("2d").drawImage(out, 0, 0, c.width, c.height);
+    p.thumb = c.toDataURL("image/jpeg", 0.8);
+    p.thumbWarped = true;
+  } catch (e) { console.error("thumb warp:", e); }
+}
+
+/* 手動重抓原始縮圖（編輯器要疊四角在原圖上，warp 過的圖不能當編輯底圖） */
+async function restoreThumb(i) {
+  const p = photos[i];
+  if (!p.thumbWarped) return;
+  const bmp = await createImageBitmap(p.file, { imageOrientation: "from-image" });
+  p.thumb = await makeThumb(bmp, 300);
+  p.thumbWarped = false;
+  bmp.close && bmp.close();
+}
+
+async function render() {
   grid.innerHTML = "";
+  const cards = [];
   photos.forEach((p, i) => {
     const card = document.createElement("div");
     card.className = "card" + (p.corners ? " ok" : "");
@@ -285,7 +316,15 @@ function render() {
       photos.splice(to, 0, photos.splice(from, 1)[0]); render();
     };
     grid.appendChild(card);
+    cards.push({ card, i });
   });
+  /* 有四角但縮圖還是原圖的：背景換成校正後縮圖（不擋 UI） */
+  const jobs = cards.filter(({ i }) => photos[i].corners && !photos[i].thumbWarped)
+                    .map(({ i }) => refreshWarpedThumb(i).then(() => {
+                      const { card } = cards.find(c => c.i === i);
+                      if (card.isConnected) card.querySelector("img").src = photos[i].thumb;
+                    }));
+  await Promise.all(jobs).catch(() => {});
 }
 
 function updateButtons() {
@@ -300,6 +339,7 @@ function rotatePhoto(i) {
     const [tl, tr, br, bl] = p.corners.map(([x, y]) => [1 - y, x]);
     p.corners = [tr, br, bl, tl];
   }
+  if (p.thumbWarped) { p.thumbWarped = false; restoreThumb(i); } /* 旋轉後舊校正縮圖作廢 */
   render();
 }
 
@@ -358,6 +398,7 @@ const HANDLE_NAMES = ["TL", "TR", "BR", "BL"];
 async function openEditor(i) {
   editIdx = i;
   const p = photos[i];
+  await restoreThumb(i); /* 編輯底圖必須是原圖（縮圖可能已是校正版） */
   const { canvas } = await decodeToCanvas(p, 1100);
   const img = $("editImg");
   img.src = canvas.toDataURL("image/jpeg", 0.9);
@@ -440,6 +481,7 @@ $("autoOne").onclick = async () => {
 $("resetCorners").onclick = () => { editCorners = defaultCorners(); drawHandles(); };
 $("applyEdit").onclick = () => {
   photos[editIdx].corners = editCorners.map(c => [...c]);
+  photos[editIdx].thumbWarped = false; /* 套用新四角 → 縮圖重生成校正版 */
   $("editor").classList.remove("open");
   render();
 };
