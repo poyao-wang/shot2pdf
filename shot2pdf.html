@@ -492,7 +492,6 @@ function dragEdge(el, a, b, rw, rh) {
     const exu = ex / len, eyu = ey / len;       /* 邊方向（單位） */
     const nx = eyu, ny = -exu;                  /* 法向量（單位） */
     const distPx = dx * nx + dy * ny;           /* pointer 位移投影到法向量（像素） */
-    (window.__edgeTrace = window.__edgeTrace || []).push({a, b, dx, dy, nx: +nx.toFixed(3), ny: +ny.toFixed(3), distPx: +distPx.toFixed(2), rectW: +r.width.toFixed(0), rectH: +r.height.toFixed(0)});
     /* 新邊線：過 A+n*d、B+n*d，方向仍 (exu,eyu)。相鄰邊方向不變求交點 */
     const Ax2 = A[0] + nx * distPx, Ay2 = A[1] + ny * distPx;
     let uaX = A[0] - P[0], uaY = A[1] - P[1];
