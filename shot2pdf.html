@@ -58,7 +58,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.4.1-dev</div>
+<div class="ver" id="verTag">v0.4.3-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -490,8 +490,9 @@ function dragEdge(el, a, b, rw, rh) {
     const ex = B[0] - A[0], ey = B[1] - A[1];
     const len = Math.hypot(ex, ey) || 1;
     const exu = ex / len, eyu = ey / len;       /* 邊方向（單位） */
-    const nx = eyu, ny = -eyu;                  /* 法向量（單位） */
+    const nx = eyu, ny = -exu;                  /* 法向量（單位） */
     const distPx = dx * nx + dy * ny;           /* pointer 位移投影到法向量（像素） */
+    (window.__edgeTrace = window.__edgeTrace || []).push({a, b, dx, dy, nx: +nx.toFixed(3), ny: +ny.toFixed(3), distPx: +distPx.toFixed(2), rectW: +r.width.toFixed(0), rectH: +r.height.toFixed(0)});
     /* 新邊線：過 A+n*d、B+n*d，方向仍 (exu,eyu)。相鄰邊方向不變求交點 */
     const Ax2 = A[0] + nx * distPx, Ay2 = A[1] + ny * distPx;
     let uaX = A[0] - P[0], uaY = A[1] - P[1];
