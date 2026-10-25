@@ -77,21 +77,21 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.5.7-dev</div>
+<div class="ver" id="verTag">v0.5.8-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
 
 <div class="toolbar">
   <div class="toolbar-row">
+    <button id="autoAll" disabled>✨ 自動偵測全部</button>
+    <button id="sortName" disabled>按檔名排序</button>
+    <button id="resetAll" disabled>♻️ 全部重設</button>
     <span id="resetConfirm" style="display:none">
       <span class="confirm-q">全部清空？</span>
       <button id="resetYes" class="danger">確定</button>
       <button id="resetNo">取消</button>
     </span>
-    <button id="resetAll" disabled>全部重設</button>
-    <button id="autoAll" disabled>✨ 自動偵測全部</button>
-    <button id="sortName" disabled>按檔名排序</button>
   </div>
   <span class="setting sizemode">
     <span class="row1">
