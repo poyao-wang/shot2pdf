@@ -37,6 +37,10 @@
   .sizemode { flex-wrap: wrap; row-gap: 4px; }
   .sizemode .unit { white-space: nowrap; }
   .sizemode input[type="number"] { width: 64px; }
+  .pxpick { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 4px; }
+  .pxpick .custom input { width: 56px; }
+  /* custom input disabled 樣式：沒選 custom 時數字框半透明不可點 */
+  .pxpick .custom input:disabled { opacity: .35; }
   .setting input { width: 70px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px 7px; font-size: 13px; }
   /* radio 不吃上面的 70px 數字框寬度——否則圓鈕被拉寬、跟文字之間出現大空洞 */
   .sizemode input[type="radio"] { width: 15px; height: 15px; padding: 0; border: 0; background: none; appearance: auto; }
@@ -67,7 +71,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.4.7-dev</div>
+<div class="ver" id="verTag">v0.4.8-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -81,7 +85,13 @@
     <label><input type="radio" name="edgeMode" value="long">長邊</label>
     <label><input type="radio" name="edgeMode" value="width" checked>寬</label>
     <label><input type="radio" name="edgeMode" value="height">高</label>
-    <input id="longEdge" type="number" value="1000" min="200" max="4000"><span class="unit">px</span>
+    <span class="pxpick">
+      <label><input type="radio" name="pxPreset" value="1000" checked>1000</label>
+      <label><input type="radio" name="pxPreset" value="2000">2000</label>
+      <label><input type="radio" name="pxPreset" value="500">500</label>
+      <label><input type="radio" name="pxPreset" value="custom">custom <input id="longEdge" type="number" value="1000" min="200" max="4000"></label>
+      <span class="unit">px</span>
+    </span>
   </span>
   <span class="setting">品質 <input id="quality" type="number" value="0.35" min="0.05" max="1" step="0.05"></span>
   <div class="toolbar-row">
@@ -628,9 +638,30 @@ function blobToDataUrl(blob) {
 
 function sizeSetting() {
   const mode = document.querySelector('input[name="edgeMode"]:checked')?.value || "width";
-  const v = Math.max(200, +$("longEdge").value || 1000);
+  /* px 來源：preset radio 或 custom 數字框（custom 未選時 disabled） */
+  const customRadio = document.querySelector('input[name="pxPreset"][value="custom"]');
+  let v;
+  if (customRadio?.checked) {
+    v = Math.max(200, +$("longEdge").value || 1000);
+  } else {
+    v = +document.querySelector('input[name="pxPreset"]:checked')?.value || 1000;
+  }
   return { mode, v };
 }
+
+/* px preset ↔ custom 連動：選 preset 停用 custom 框；點 custom 框自動切到 custom radio */
+document.querySelectorAll('input[name="pxPreset"]').forEach(r => {
+  r.addEventListener("change", () => {
+    const custom = document.querySelector('input[name="pxPreset"][value="custom"]');
+    $("longEdge").disabled = !custom.checked;
+  });
+});
+$("longEdge").addEventListener("focus", () => {
+  const custom = document.querySelector('input[name="pxPreset"][value="custom"]');
+  if (custom && !custom.checked) { custom.checked = true; $("longEdge").disabled = false; }
+});
+/* 初始：1000 preset 選中 → custom 框 disabled */
+$("longEdge").disabled = true;
 
 $( "export" ).onclick = async () => {
   const size = sizeSetting();
