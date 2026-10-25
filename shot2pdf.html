@@ -62,7 +62,7 @@
   #stage { position: relative; max-width: 92vw; max-height: 74vh; }
   #stage img { max-width: 92vw; max-height: 74vh; display: block; }
   #quadCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-  .handle { position: absolute; width: 33px; height: 33px; border-radius: 50%; background: var(--accent); border: 4px solid #fff; transform: translate(-50%,-50%); cursor: move; touch-action: none; }
+  .handle { position: absolute; width: 33px; height: 33px; border-radius: 50%; background: var(--accent); border: 4px solid #fff; transform: translate(-50%,-50%); cursor: move; touch-action: none; z-index: 3; }
   .edge-handle { position: absolute; width: 45px; height: 21px; border-radius: 11px; background: rgba(255,255,255,.95); border: 2px solid var(--accent); transform: translate(-50%,-50%); cursor: move; touch-action: none; z-index: 2; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
   .editorbar { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
   #progressWrap { display: none; margin-top: 10px; }
@@ -73,7 +73,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.5.5-dev</div>
+<div class="ver" id="verTag">v0.5.6-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
