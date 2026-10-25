@@ -33,7 +33,7 @@
   #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 12px; }
   .card { position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: grab; }
   .card.dragging { opacity: .35; }
-  .card img { width: 100%; height: 110px; object-fit: cover; display: block; pointer-events: none; }
+  .card img { width: 100%; height: 110px; object-fit: contain; display: block; pointer-events: none; background: #000; }
   .card .idx { position: absolute; top: 4px; left: 5px; background: rgba(0,0,0,.65); border-radius: 4px; font-size: 11px; padding: 1px 6px; }
   .card .st { position: absolute; top: 4px; right: 5px; font-size: 13px; }
   .card .ops { position: absolute; bottom: 0; left: 0; right: 0; display: flex; background: rgba(0,0,0,.6); }
@@ -57,7 +57,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.3.2-dev</div>
+<div class="ver" id="verTag">v0.3.3-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
