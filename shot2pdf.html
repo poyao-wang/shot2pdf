@@ -62,8 +62,8 @@
   #stage { position: relative; max-width: 92vw; max-height: 74vh; }
   #stage img { max-width: 92vw; max-height: 74vh; display: block; }
   #quadCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-  .handle { position: absolute; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; transform: translate(-50%,-50%); cursor: move; touch-action: none; }
-  .edge-handle { position: absolute; width: 30px; height: 14px; border-radius: 7px; background: rgba(255,255,255,.95); border: 2px solid var(--accent); transform: translate(-50%,-50%); cursor: move; touch-action: none; z-index: 2; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+  .handle { position: absolute; width: 33px; height: 33px; border-radius: 50%; background: var(--accent); border: 4px solid #fff; transform: translate(-50%,-50%); cursor: move; touch-action: none; }
+  .edge-handle { position: absolute; width: 45px; height: 21px; border-radius: 11px; background: rgba(255,255,255,.95); border: 2px solid var(--accent); transform: translate(-50%,-50%); cursor: move; touch-action: none; z-index: 2; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
   .editorbar { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
   #progressWrap { display: none; margin-top: 10px; }
   #progressBar { height: 8px; background: var(--panel); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
@@ -73,7 +73,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.5.4-dev</div>
+<div class="ver" id="verTag">v0.5.5-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -508,6 +508,9 @@ function drawHandles() {
     d.title = `edge ${edgeNames[k]}`;
     d.style.left = (A[0] + B[0]) / 2 * rw + "px";
     d.style.top = (A[1] + B[1]) / 2 * rh + "px";
+    /* 拉柄長軸轉到跟邊平行：螢幕 px 的邊向量角度（CSS rotate 順時針＝y 向下，atan2 同向） */
+    const ang = Math.atan2((B[1] - A[1]) * rh, (B[0] - A[0]) * rw) * 180 / Math.PI;
+    d.style.transform = `translate(-50%,-50%) rotate(${ang}deg)`;
     dragEdge(d, a, b, rw, rh);
     stage.appendChild(d);
   });
