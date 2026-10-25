@@ -42,9 +42,9 @@
   .pxpick .custom input { width: 56px; }
   /* custom 未選時半透明提示但仍可點（點＝自動切 custom）；disabled 會吃掉 pointer 事件所以不用 */
   .pxpick input.inactive { opacity: .35; }
-  .setting input { width: 70px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px 7px; font-size: 13px; }
-  /* radio 不吃上面的 70px 數字框寬度——否則圓鈕被拉寬、跟文字之間出現大空洞 */
-  .sizemode input[type="radio"] { width: 15px; height: 15px; padding: 0; border: 0; background: none; appearance: auto; }
+  .setting input[type="number"] { width: 70px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px 7px; font-size: 13px; }
+  /* radio 全域不吃數字框寬度（v0.4.6 只修了 sizemode，品質列又踩同坑） */
+  .setting input[type="radio"] { width: 15px; height: 15px; padding: 0; border: 0; background: none; appearance: auto; }
   #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 12px; }
   .card { position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: grab; }
   .card.dragging { opacity: .35; }
@@ -72,7 +72,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.5.2-dev</div>
+<div class="ver" id="verTag">v0.5.3-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
