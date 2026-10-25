@@ -58,7 +58,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.4.0-dev</div>
+<div class="ver" id="verTag">v0.4.1-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -360,9 +360,10 @@ async function decodeToCanvas(p, longEdge) {
   ctx.translate(c.width / 2, c.height / 2);
   ctx.rotate(p.rot * Math.PI / 180);
   /* 修正：原本只給位置沒給尺寸 → 4032px 原圖被「原尺寸」畫進 900px 畫布 = 只看見中央裁切。
-     必須把縮放比例帶進 drawImage，旋轉交換寬高時也要用對應尺寸。 */
-  const dw = swap ? bmp.height : bmp.width, dh = swap ? bmp.width : bmp.height;
-  ctx.drawImage(bmp, -dw * s / 2, -dh * s / 2, dw * s, dh * s);
+     必須把縮放比例帶進 drawImage。⚠️ 旋轉時 drawImage 的尺寸「不要」跟著 swap——
+     rotate(90) 已把 (W,H) 的繪圖框轉成 (H,W) 的螢幕框，畫布尺寸才需要 swap；
+     若連 drawImage 也 swap，內容會被非等比縮放（rot≠0 時照片變形、四角對位全錯） */
+  ctx.drawImage(bmp, -bmp.width * s / 2, -bmp.height * s / 2, bmp.width * s, bmp.height * s);
   bmp.close && bmp.close();
   return { canvas: c, w, h };
 }
