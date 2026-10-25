@@ -474,22 +474,46 @@ function drawHandles() {
 }
 
 function dragEdge(el, a, b, rw, rh) {
-  /* 邊 (a,b) 平行移動：把 pointer 位移投影到該邊的法向量上，兩個角一起動 */
+  /* 邊 (a,b) 平移但「四邊角度全鎖定」：
+     邊本身沿法向量滑動，相鄰兩邊沿自己的原方向伸縮去接它（直線交點）。
+     → 只變邊長，不變任何一邊的角度 */
+  const prev = (a + 3) % 4, next = (b + 1) % 4;
   let start, startCorners;
   const move = e => {
     if (!start) return;
     const r = $("editImg").getBoundingClientRect();
     const dx = e.clientX - start.x, dy = e.clientY - start.y;
-    const A = startCorners[a], B = startCorners[b];
-    const ex = (B[0] - A[0]) * r.width, ey = (B[1] - A[1]) * r.height;
+    const toPx = c => [c[0] * r.width, c[1] * r.height];
+    const toNorm = p => [p[0] / r.width, p[1] / r.height];
+    const A = toPx(startCorners[a]), B = toPx(startCorners[b]);
+    const P = toPx(startCorners[prev]), N = toPx(startCorners[next]);
+    const ex = B[0] - A[0], ey = B[1] - A[1];
     const len = Math.hypot(ex, ey) || 1;
-    /* 法向量 n = (ey, -ex) / len（單位向量）。(dx,dy)·n 已是像素位移，
-       再換成正規化座標要除「位移方向上的畫布尺寸」——法向量接近水平除 width、接近垂直除 height */
-    const nx = ey / len, ny = -ex / len;
-    const denom = Math.abs(nx) > Math.abs(ny) ? r.width : r.height;
-    const dist = (dx * nx + dy * ny) / denom;
-    editCorners[a] = [A[0] + nx * dist, A[1] + ny * dist];
-    editCorners[b] = [B[0] + nx * dist, B[1] + ny * dist];
+    const exu = ex / len, eyu = ey / len;       /* 邊方向（單位） */
+    const nx = eyu, ny = -eyu;                  /* 法向量（單位） */
+    const distPx = dx * nx + dy * ny;           /* pointer 位移投影到法向量（像素） */
+    /* 新邊線：過 A+n*d、B+n*d，方向仍 (exu,eyu)。相鄰邊方向不變求交點 */
+    const Ax2 = A[0] + nx * distPx, Ay2 = A[1] + ny * distPx;
+    let uaX = A[0] - P[0], uaY = A[1] - P[1];
+    let ubX = N[0] - B[0], ubY = N[1] - B[1];
+    const uaLen = Math.hypot(uaX, uaY) || 1, ubLen = Math.hypot(ubX, ubY) || 1;
+    uaX /= uaLen; uaY /= uaLen; ubX /= ubLen; ubY /= ubLen;
+    /* t = cross(A2-A, e) / cross(ua, e) → newA = A + t*ua */
+    const cross = (ux, uy, vx, vy) => ux * vy - uy * vx;
+    const denA = cross(uaX, uaY, exu, eyu), denB = cross(ubX, ubY, exu, eyu);
+    if (Math.abs(denA) < 1e-6 || Math.abs(denB) < 1e-6) {
+      /* 相鄰邊與本邊近乎平行（退化）：退回純平移 */
+      editCorners[a] = toNorm([A[0] + nx * distPx, A[1] + ny * distPx]);
+      editCorners[b] = toNorm([B[0] + nx * distPx, B[1] + ny * distPx]);
+    } else {
+      const tA = cross(Ax2 - A[0], Ay2 - A[1], exu, eyu) / denA;
+      const tB = cross(Ax2 - B[0], Ay2 - B[1], exu, eyu) / denB;
+      /* 限制伸縮量避免邊翻面（超過相鄰邊長 3 倍就夾住） */
+      const tAc = Math.max(-3 * uaLen, Math.min(3 * uaLen, tA));
+      const tBc = Math.max(-3 * ubLen, Math.min(3 * ubLen, tB));
+      editCorners[a] = toNorm([A[0] + uaX * tAc, A[1] + uaY * tAc]);
+      editCorners[b] = toNorm([B[0] + ubX * tBc, B[1] + ubY * tBc]);
+    }
     drawHandles();
     e.preventDefault();
   };
