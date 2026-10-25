@@ -56,7 +56,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.2.0-dev</div>
+<div class="ver" id="verTag">v0.2.1-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -374,8 +374,10 @@ function sizeEditorImage() {
   if (!img.naturalWidth) return;
   const maxW = window.innerWidth * 0.92, maxH = window.innerHeight * 0.74;
   const s = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+  /* 同時明定寬與高：Safari 對「width 明確 + height:auto」的圖，getBoundingClientRect
+     在 layout 未完全落定時會回舊值 → 四角編輯器爆版與四角錯位的根源 */
   img.style.width = Math.floor(img.naturalWidth * s) + "px";
-  img.style.height = "auto";
+  img.style.height = Math.floor(img.naturalHeight * s) + "px";
 }
 
 window.addEventListener("resize", () => {
@@ -478,31 +480,41 @@ function blobToDataUrl(blob) {
   });
 }
 
-$("export").onclick = async () => {
+$( "export" ).onclick = async () => {
   const longEdge = Math.max(200, +$("longEdge").value || 1000);
   const quality = Math.min(1, Math.max(0.05, +$("quality").value || 0.35));
   if (!photos.length) return;
   const { jsPDF } = window.jspdf;
   if (!jsPDF) { setStatus("jsPDF 沒載到（需要網路）——重新整理再試。"); return; }
-  const pdf = new jsPDF({ unit: "px", format: [1, 1], compress: true });
-  let skipped = 0;
+  /* 先把每頁 render 成 {blob,w,h}，再用「首頁尺寸」建 PDF——
+     舊版先建 [1,1] 的 PDF 再 addPage([w,h])，jsPDF 的 unit:px 會把
+     addImage 的 w,h 解讀成頁面座標；當後續頁尺寸與首頁不同時，
+     addPage 在部分版本會沿用錯誤的 mediaBox → 底部留白／內容被裁。
+     改成每頁尺寸確定後逐一 new 一個同構 doc 再合併不可行（jsPDF 無合併），
+     正解：unit 用 "pt"、頁面尺寸用 px*0.75 換算，且 addImage 前
+     先 addPage 再取得 getPageWidth/Height 當作繪製尺寸。 */
+  let pdf = null;
+  let skipped = 0, done = 0;
   $("progressWrap").style.display = "block";
   for (let i = 0; i < photos.length; i++) {
     setStatus(`處理 ${i + 1}/${photos.length}：${photos[i].name}`);
     try {
       const { blob, w, h } = await renderPage(photos[i], longEdge, quality);
       const url = await blobToDataUrl(blob);
-      if (i === 0) { pdf.deletePage(1); pdf.addPage([w, h]); }
-      else pdf.addPage([w, h]);
-      pdf.addImage(url, "JPEG", 0, 0, w, h);
+      const pw = w * 0.75, ph = h * 0.75; /* px → pt */
+      if (!pdf) pdf = new jsPDF({ unit: "pt", format: [pw, ph], compress: true, orientation: pw > ph ? "l" : "p" });
+      else pdf.addPage([pw, ph], pw > ph ? "l" : "p");
+      pdf.addImage(url, "JPEG", 0, 0, pw, ph);
+      done++;
     } catch (e) { console.error(e); skipped++; setStatus(`這張失敗，跳過：${photos[i].name}（${e.message}）`); }
     $("progressFill").style.width = ((i + 1) / photos.length * 100) + "%";
     await new Promise(r => setTimeout(r, 0));
   }
+  if (!pdf) { setStatus("全部失敗，沒有產出。"); $("progressWrap").style.display = "none"; return; }
   const d = new Date(), pad = n => String(n).padStart(2, "0");
-  const fname = `slides-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.pdf`;
+  const fname = `shots-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.pdf`;
   pdf.save(fname);
-  setStatus(`完成 → ${fname}（${photos.length - skipped} 頁${skipped ? `，跳過 ${skipped} 張` : ""}）`);
+  setStatus(`完成 → ${fname}（${done} 頁${skipped ? `，跳過 ${skipped} 張` : ""}）`);
   setTimeout(() => { $("progressWrap").style.display = "none"; $("progressFill").style.width = 0; }, 1500);
 };
 </script>
