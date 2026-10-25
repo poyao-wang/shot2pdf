@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>shot2pdf — 拍照圖片批次轉 PDF（四角校正）</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root {
     --bg: #14161a; --panel: #1e2127; --border: #33383f; --text: #e8eaed;
@@ -57,7 +58,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.3.3-dev</div>
+<div class="ver" id="verTag">v0.4.0-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -68,6 +69,7 @@
   <span class="setting">長邊 <input id="longEdge" type="number" value="1000" min="200" max="4000"> px</span>
   <span class="setting">品質 <input id="quality" type="number" value="0.35" min="0.05" max="1" step="0.05"></span>
   <button id="export" class="primary" disabled>產出 PDF</button>
+  <button id="exportZip" disabled>產出 ZIP（校正圖）</button>
 </div>
 <div id="progressWrap"><div id="progressBar"><div id="progressFill"></div></div></div>
 <div id="status"></div>
@@ -330,7 +332,7 @@ async function render() {
 
 function updateButtons() {
   const has = photos.length > 0;
-  $("autoAll").disabled = !has; $("sortName").disabled = !has; $("export").disabled = !has;
+  $("autoAll").disabled = !has; $("sortName").disabled = !has; $("export").disabled = !has; $("exportZip").disabled = !has;
 }
 
 function rotatePhoto(i) {
@@ -607,12 +609,47 @@ $( "export" ).onclick = async () => {
     await new Promise(r => setTimeout(r, 0));
   }
   if (!pdf) { setStatus("全部失敗，沒有產出。"); $("progressWrap").style.display = "none"; return; }
-  const d = new Date(), pad = n => String(n).padStart(2, "0");
-  const fname = `shots-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.pdf`;
-  pdf.save(fname);
-  setStatus(`完成 → ${fname}（${done} 頁${skipped ? `，跳過 ${skipped} 張` : ""}）`);
+  pdf.save(stampName("pdf"));
+  setStatus(`完成 → ${stampName("pdf")}（${done} 頁${skipped ? `，跳過 ${skipped} 張` : ""}）`);
   setTimeout(() => { $("progressWrap").style.display = "none"; $("progressFill").style.width = 0; }, 1500);
 };
+
+/* ── 產出 ZIP：校正後的 JPEG 一張一檔 ── */
+$("exportZip").onclick = async () => {
+  const longEdge = Math.max(200, +$("longEdge").value || 1000);
+  const quality = Math.min(1, Math.max(0.05, +$("quality").value || 0.35));
+  if (!photos.length) return;
+  if (!window.JSZip) { setStatus("JSZip 沒載到（需要網路）——重新整理再試。"); return; }
+  const zip = new JSZip();
+  let done = 0, skipped = 0;
+  $("progressWrap").style.display = "block";
+  for (let i = 0; i < photos.length; i++) {
+    setStatus(`處理 ${i + 1}/${photos.length}：${photos[i].name}`);
+    try {
+      const { blob } = await renderPage(photos[i], longEdge, quality);
+      const base = photos[i].name.replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "_");
+      zip.file(`${String(i + 1).padStart(3, "0")}_${base}.jpg`, blob);
+      done++;
+    } catch (e) { console.error(e); skipped++; setStatus(`這張失敗，跳過：${photos[i].name}（${e.message}）`); }
+    $("progressFill").style.width = ((i + 1) / photos.length * 100) + "%";
+    await new Promise(r => setTimeout(r, 0));
+  }
+  if (!done) { setStatus("全部失敗，沒有產出。"); $("progressWrap").style.display = "none"; return; }
+  const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE" }); /* JPEG 已壓縮，STORE 不二次壓 */
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(zipBlob);
+  a.download = stampName("zip");
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  setStatus(`完成 → ${stampName("zip")}（${done} 張${skipped ? `，跳過 ${skipped} 張` : ""}）`);
+  setTimeout(() => { $("progressWrap").style.display = "none"; $("progressFill").style.width = 0; }, 1500);
+};
+
+/* 自動檔名：YYYYMMDDThhmmss（當地時間） */
+function stampName(ext) {
+  const d = new Date(), pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.${ext}`;
+}
 </script>
 </body>
 </html>
