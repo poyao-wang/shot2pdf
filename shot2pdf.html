@@ -23,6 +23,10 @@
   #drop.over { border-color: var(--accent); color: var(--accent); }
   .toolbar { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin: 12px 0; }
   .toolbar-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #resetConfirm { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid #e5534b; border-radius: 7px; background: rgba(229,83,75,.08); }
+  #resetConfirm .confirm-q { font-size: 12px; color: #ff8d89; white-space: nowrap; }
+  button.danger { background: #e5534b; border-color: #e5534b; color: #fff; }
+  button.danger:hover { background: #c74440; }
   button {
     background: var(--panel); color: var(--text); border: 1px solid var(--border);
     border-radius: 7px; padding: 7px 13px; font-size: 13px; cursor: pointer;
@@ -73,13 +77,19 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.5.6-dev</div>
+<div class="ver" id="verTag">v0.5.7-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
 
 <div class="toolbar">
   <div class="toolbar-row">
+    <span id="resetConfirm" style="display:none">
+      <span class="confirm-q">全部清空？</span>
+      <button id="resetYes" class="danger">確定</button>
+      <button id="resetNo">取消</button>
+    </span>
+    <button id="resetAll" disabled>全部重設</button>
     <button id="autoAll" disabled>✨ 自動偵測全部</button>
     <button id="sortName" disabled>按檔名排序</button>
   </div>
@@ -373,6 +383,7 @@ async function render() {
 function updateButtons() {
   const has = photos.length > 0;
   $("autoAll").disabled = !has; $("sortName").disabled = !has; $("export").disabled = !has; $("exportZip").disabled = !has;
+  $("resetAll").disabled = !has;
 }
 
 function rotatePhoto(i) {
@@ -387,6 +398,16 @@ function rotatePhoto(i) {
 }
 
 $("sortName").onclick = () => { photos.sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true })); render(); };
+
+/* 全部重設＝回到剛開頁的狀態（清照片、狀態列、確認條收回） */
+$("resetAll").onclick = () => { $("resetConfirm").style.display = ""; $("resetAll").disabled = true; };
+$("resetNo").onclick = () => { $("resetConfirm").style.display = "none"; $("resetAll").disabled = photos.length === 0; };
+$("resetYes").onclick = () => {
+  photos.length = 0;
+  $("resetConfirm").style.display = "none";
+  render();
+  setStatus("已全部重設。拖入照片重新開始。");
+};
 
 /* ── 解碼：createImageBitmap（解碼在背景）→ canvas 套旋轉與縮放 ── */
 async function decodeToCanvas(p, longEdge) {
