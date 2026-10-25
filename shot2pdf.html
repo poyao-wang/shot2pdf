@@ -47,6 +47,7 @@
   #stage img { max-width: 92vw; max-height: 74vh; display: block; }
   #quadCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   .handle { position: absolute; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; transform: translate(-50%,-50%); cursor: move; touch-action: none; }
+  .edge-handle { position: absolute; width: 30px; height: 14px; border-radius: 7px; background: rgba(255,255,255,.95); border: 2px solid var(--accent); transform: translate(-50%,-50%); cursor: move; touch-action: none; z-index: 2; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
   .editorbar { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
   #progressWrap { display: none; margin-top: 10px; }
   #progressBar { height: 8px; background: var(--panel); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
@@ -56,7 +57,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.3.0-dev</div>
+<div class="ver" id="verTag">v0.3.1-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -444,7 +445,7 @@ function drawQuadOnly() {
 
 function drawHandles() {
   const stage = $("stage");
-  stage.querySelectorAll(".handle").forEach(h => h.remove());
+  stage.querySelectorAll(".handle,.edge-handle").forEach(h => h.remove());
   const rect = $("editImg").getBoundingClientRect();
   const rw = rect.width, rh = rect.height;
   drawQuadOnly();
@@ -455,6 +456,52 @@ function drawHandles() {
     dragHandle(d, j, rw, rh);
     stage.appendChild(d);
   });
+  /* 邊中點拖柄：拖曳讓整個邊平行移動（對邊兩角同步位移） */
+  const edgeNames = ["top", "right", "bottom", "left"];
+  [[0, 1], [1, 2], [2, 3], [3, 0]].forEach(([a, b], k) => {
+    const A = editCorners[a], B = editCorners[b];
+    const d = document.createElement("div");
+    d.className = "edge-handle";
+    d.title = `edge ${edgeNames[k]}`;
+    d.style.left = (A[0] + B[0]) / 2 * rw + "px";
+    d.style.top = (A[1] + B[1]) / 2 * rh + "px";
+    dragEdge(d, a, b, rw, rh);
+    stage.appendChild(d);
+  });
+}
+
+function dragEdge(el, a, b, rw, rh) {
+  /* 邊 (a,b) 平行移動：把 pointer 位移投影到該邊的法向量上，兩個角一起動 */
+  let start, startCorners;
+  const move = e => {
+    if (!start) return;
+    const r = $("editImg").getBoundingClientRect();
+    const dx = e.clientX - start.x, dy = e.clientY - start.y;
+    const A = startCorners[a], B = startCorners[b];
+    const ex = (B[0] - A[0]) * r.width, ey = (B[1] - A[1]) * r.height;
+    const len = Math.hypot(ex, ey) || 1;
+    /* 法向量 n = (ey, -ex) / len（單位向量）。(dx,dy)·n 已是像素位移，
+       再換成正規化座標要除「位移方向上的畫布尺寸」——法向量接近水平除 width、接近垂直除 height */
+    const nx = ey / len, ny = -ex / len;
+    const denom = Math.abs(nx) > Math.abs(ny) ? r.width : r.height;
+    const dist = (dx * nx + dy * ny) / denom;
+    editCorners[a] = [A[0] + nx * dist, A[1] + ny * dist];
+    editCorners[b] = [B[0] + nx * dist, B[1] + ny * dist];
+    drawHandles();
+    e.preventDefault();
+  };
+  const up = () => {
+    start = null;
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+  };
+  el.onpointerdown = e => {
+    start = { x: e.clientX, y: e.clientY };
+    startCorners = editCorners.map(c => [...c]);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    e.preventDefault(); e.stopPropagation();
+  };
 }
 
 function dragHandle(el, j, rw, rh) {
