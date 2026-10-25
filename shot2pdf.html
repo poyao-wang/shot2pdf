@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>shot2pdf — 拍照圖片批次轉 PDF（四角校正）</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1e2127; --border: #33383f; --text: #e8eaed;
+    --dim: #9aa0a6; --accent: #8ab4f8; --ok: #81c995; --warn: #fdd663; --bad: #f28b82;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, "PingFang TC", sans-serif; padding: 16px; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .sub { color: var(--dim); font-size: 12px; margin-bottom: 14px; }
+  #drop {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 28px; text-align: center;
+    color: var(--dim); cursor: pointer; transition: border-color .15s;
+  }
+  #drop.over { border-color: var(--accent); color: var(--accent); }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+  button {
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 7px; padding: 7px 13px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); color: #101418; border-color: var(--accent); font-weight: 600; }
+  .setting { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dim); }
+  .setting input { width: 70px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px 7px; font-size: 13px; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 12px; }
+  .card { position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: grab; }
+  .card.dragging { opacity: .35; }
+  .card img { width: 100%; height: 110px; object-fit: cover; display: block; pointer-events: none; }
+  .card .idx { position: absolute; top: 4px; left: 5px; background: rgba(0,0,0,.65); border-radius: 4px; font-size: 11px; padding: 1px 6px; }
+  .card .st { position: absolute; top: 4px; right: 5px; font-size: 13px; }
+  .card .ops { position: absolute; bottom: 0; left: 0; right: 0; display: flex; background: rgba(0,0,0,.6); }
+  .card .ops button { flex: 1; border: 0; border-radius: 0; background: none; padding: 5px 0; font-size: 12px; }
+  .card.ok { border-color: var(--ok); } .card.err { border-color: var(--bad); }
+  #status { color: var(--dim); font-size: 13px; min-height: 18px; margin-top: 8px; }
+  /* ── 四角編輯器 ── */
+  #editor { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 10; flex-direction: column; align-items: center; justify-content: center; padding: 14px; }
+  #editor.open { display: flex; }
+  #stage { position: relative; max-width: 92vw; max-height: 74vh; }
+  #stage img { max-width: 92vw; max-height: 74vh; display: block; }
+  #quadCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .handle { position: absolute; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; transform: translate(-50%,-50%); cursor: move; touch-action: none; }
+  .editorbar { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+  #progressWrap { display: none; margin-top: 10px; }
+  #progressBar { height: 8px; background: var(--panel); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+  #progressFill { height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+</style>
+</head>
+<body>
+<h1>shot2pdf</h1>
+<div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
+
+<div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
+<input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
+
+<div class="toolbar">
+  <button id="autoAll" disabled>✨ 自動偵測全部</button>
+  <button id="sortName" disabled>按檔名排序</button>
+  <span class="setting">長邊 <input id="longEdge" type="number" value="1000" min="200" max="4000"> px</span>
+  <span class="setting">品質 <input id="quality" type="number" value="0.35" min="0.05" max="1" step="0.05"></span>
+  <button id="export" class="primary" disabled>產出 PDF</button>
+</div>
+<div id="progressWrap"><div id="progressBar"><div id="progressFill"></div></div></div>
+<div id="status"></div>
+<div id="grid"></div>
+
+<div id="editor">
+  <div id="stage"><img id="editImg" alt=""><canvas id="quadCanvas"></canvas></div>
+  <div class="editorbar">
+    <button id="autoOne">✨ 自動偵測這張</button>
+    <button id="resetCorners">重設</button>
+    <button id="applyEdit" class="primary">套用並關閉</button>
+  </div>
+</div>
+
+<!-- Worker 原始碼：所有 OpenCV 工作都在背景執行緒 -->
+<script id="workerCode" type="text/plain">
+let cvOK = false, cvErr = null;
+function post(m, transfer) { self.postMessage(m, transfer || []); }
+self.onmessage = (e) => {
+  const m = e.data;
+  if (m.cmd === "init") { tryInit(m.url); return; }
+  if (!cvOK) { post({ id: m.id, error: cvErr || "OpenCV 未載入" }); return; }
+  try {
+    if (m.cmd === "detect") post({ id: m.id, quad: detect(m.imageData) });
+    else if (m.cmd === "warp") {
+      const out = warp(m.imageData, m.corners);
+      post({ id: m.id, imageData: out }, [out.data.buffer]);
+    }
+  } catch (err) { post({ id: m.id, error: String((err && err.message) || err) }); }
+};
+function tryInit(url) {
+  try { importScripts(url); }
+  catch (err) { cvErr = "OpenCV 載入失敗（需要網路載入 CDN）"; post({ type: "cvError", error: cvErr }); return; }
+  const t = setInterval(() => {
+    if (typeof cv !== "undefined" && cv.Mat) { clearInterval(t); cvOK = true; post({ type: "ready" }); }
+  }, 80);
+}
+function orderCorners(pts) {
+  const cx = pts.reduce((s, p) => s + p[0], 0) / 4, cy = pts.reduce((s, p) => s + p[1], 0) / 4;
+  pts.sort((a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx));
+  let start = 0, minSum = Infinity;
+  pts.forEach((p, j) => { if (p[0] + p[1] < minSum) { minSum = p[0] + p[1]; start = j; } });
+  return [0, 1, 2, 3].map(j => pts[(start + j) % 4]);
+}
+function detectQuadFromContours(cnts, W, H, areaMin, epsK, needConvex) {
+  const area = W * H;
+  let best = null, bestA = 0;
+  for (let i = 0; i < cnts.size(); i++) {
+    const c = cnts.get(i);
+    const peri = cv.arcLength(c, true);
+    const box = new cv.Mat();
+    cv.approxPolyDP(c, box, epsK * peri, true);
+    if (box.rows === 4 && (!needConvex || cv.isContourConvex(box))) {
+      const a = Math.abs(cv.contourArea(box));
+      if (a > area * areaMin && a < area * 0.995 && a > bestA) { bestA = a; if (best) best.delete(); best = box; c.delete(); continue; }
+    }
+    box.delete(); c.delete();
+  }
+  return best;
+}
+
+function detect(imageData) {
+  const src = cv.matFromImageData(imageData);
+  const W = imageData.width, H = imageData.height;
+  const gray = new cv.Mat();
+  let best = null;
+  const trash = [];
+  try {
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+    /* ── 路線 1：Otsu 亮區分割（暗房間亮幕場景，Python 端已驗證 2/2）── */
+    try {
+      const th = new cv.Mat(), closed = new cv.Mat();
+      const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(25, 25));
+      const cnts = new cv.MatVector(), hier = new cv.Mat();
+      trash.push(th, closed, kernel, cnts, hier);
+      cv.threshold(gray, th, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+      cv.morphologyEx(th, closed, cv.MORPH_CLOSE, kernel);
+      cv.findContours(closed, cnts, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      best = detectQuadFromContours(cnts, W, H, 0.08, 0.02, false);
+    } catch (e) { console.error("otsu path:", e); }
+
+    /* ── 路線 2（fallback）：Canny + dilate + RETR_EXTERNAL ── */
+    if (!best) {
+      const blur = new cv.Mat(), edges = new cv.Mat();
+      const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+      const cnts = new cv.MatVector(), hier = new cv.Mat();
+      trash.push(blur, edges, kernel, cnts, hier);
+      cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
+      cv.Canny(blur, edges, 50, 150);
+      cv.dilate(edges, edges, kernel);
+      cv.findContours(edges, cnts, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      best = detectQuadFromContours(cnts, W, H, 0.08, 0.03, true);
+    }
+
+    if (!best) return null;
+    const pts = [];
+    for (let j = 0; j < 4; j++) pts.push([best.data32S[j * 2], best.data32S[j * 2 + 1]]);
+    best.delete(); best = null;
+    return orderCorners(pts).map(([x, y]) => [x / W, y / H]);
+  } finally { try { if (best) best.delete(); } catch (_) {} trash.forEach(m => { try { m.delete(); } catch (_) {} }); [src, gray].forEach(m => m.delete()); }
+}
+function warp(imageData, cornersNorm) {
+  const src = cv.matFromImageData(imageData);
+  const dst = new cv.Mat();
+  try {
+    const quad = cornersNorm.map(([x, y]) => [x * imageData.width, y * imageData.height]);
+    const wTop = Math.hypot(quad[1][0] - quad[0][0], quad[1][1] - quad[0][1]);
+    const wBot = Math.hypot(quad[2][0] - quad[3][0], quad[2][1] - quad[3][1]);
+    const hL = Math.hypot(quad[3][0] - quad[0][0], quad[3][1] - quad[0][1]);
+    const hR = Math.hypot(quad[2][0] - quad[1][0], quad[2][1] - quad[1][1]);
+    const dw = Math.max(1, Math.round((wTop + wBot) / 2)), dh = Math.max(1, Math.round((hL + hR) / 2));
+    const srcVec = cv.matFromArray(4, 1, cv.CV_32FC2, quad.flat());
+    const dstVec = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, dw, 0, dw, dh, 0, dh]);
+    const Hm = cv.getPerspectiveTransform(srcVec, dstVec);
+    cv.warpPerspective(src, dst, Hm, new cv.Size(dw, dh), cv.INTER_CUBIC, cv.BORDER_REPLICATE);
+    const out = new ImageData(new Uint8ClampedArray(dst.data), dst.cols, dst.rows);
+    srcVec.delete(); dstVec.delete(); Hm.delete();
+    return out;
+  } finally { [src, dst].forEach(m => m.delete()); }
+}
+</script>
+
+<script>
+"use strict";
+/* ── 狀態 ──
+   photos[i] = { file, name, thumb(dataURL), rot, corners: null 或 [TL,TR,BR,BL] 正規化 0~1 } */
+const photos = [];
+const $ = id => document.getElementById(id);
+const drop = $("drop"), fileInput = $("fileInput"), grid = $("grid"), statusEl = $("status");
+
+function setStatus(msg) { statusEl.textContent = msg; }
+
+/* ── Worker 管理 ── */
+let worker = null, workerReady = null, jobSeq = 0;
+const pending = new Map();
+
+function ensureWorker() {
+  if (worker) return workerReady;
+  worker = new Worker(URL.createObjectURL(new Blob(
+    [$("workerCode").textContent], { type: "application/javascript" })));
+  workerReady = new Promise((res, rej) => {
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === "ready") return res();
+      if (m.type === "cvError") return rej(new Error(m.error));
+      const job = pending.get(m.id);
+      if (job) { pending.delete(m.id); m.error ? job.rej(new Error(m.error)) : job.res(m); }
+    };
+  });
+  worker.postMessage({ cmd: "init", url: "https://docs.opencv.org/4.9.0/opencv.js" });
+  return workerReady;
+}
+
+function workerJob(cmd, payload, transfer) {
+  return new Promise((res, rej) => {
+    const id = ++jobSeq;
+    pending.set(id, { res, rej });
+    worker.postMessage({ cmd, id, ...payload }, transfer || []);
+  });
+}
+
+/* ── 匯入 ── */
+drop.onclick = () => fileInput.click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); addFiles(e.dataTransfer.files); };
+fileInput.onchange = () => { addFiles(fileInput.files); fileInput.value = ""; };
+
+async function addFiles(list) {
+  const files = [...list].filter(f => /image\/(jpeg|png|webp)/.test(f.type));
+  if (!files.length) return;
+  setStatus(`匯入 ${files.length} 張…`);
+  for (const f of files) {
+    try {
+      const bmp = await createImageBitmap(f, { imageOrientation: "from-image" });
+      const thumb = await makeThumb(bmp, 300);
+      photos.push({ file: f, name: f.name, thumb, w: bmp.width, h: bmp.height, rot: 0, corners: null });
+      bmp.close && bmp.close();
+    } catch (err) { console.error(err); setStatus(`讀取失敗：${f.name}`); }
+  }
+  render(); updateButtons();
+  setStatus(`共 ${photos.length} 張。先按「自動偵測全部」，再檢查有問題的。`);
+}
+
+function makeThumb(bmp, edge) {
+  const s = edge / Math.max(bmp.width, bmp.height);
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.8);
+}
+
+/* ── 縮圖牆 ── */
+const HANDLE_COLORS = ["#f28b82", "#fdd663", "#81c995", "#8ab4f8"];
+
+function render() {
+  grid.innerHTML = "";
+  photos.forEach((p, i) => {
+    const card = document.createElement("div");
+    card.className = "card" + (p.corners ? " ok" : "");
+    card.draggable = true;
+    const badge = p.corners ? `<span class="st">✅</span>` : ``;
+    card.innerHTML = `<img src="${p.thumb}"><span class="idx">${i + 1}</span>${badge}
+      <div class="ops"><button data-op="fix">四角</button><button data-op="rot">↻</button><button data-op="del">✕</button></div>`;
+    card.querySelector('[data-op="fix"]').onclick = e => { e.stopPropagation(); openEditor(i); };
+    card.querySelector('[data-op="rot"]').onclick = e => { e.stopPropagation(); rotatePhoto(i); };
+    card.querySelector('[data-op="del"]').onclick = e => { e.stopPropagation(); photos.splice(i, 1); render(); updateButtons(); };
+    card.ondragstart = e => { e.dataTransfer.setData("text/plain", i); card.classList.add("dragging"); };
+    card.ondragend = () => card.classList.remove("dragging");
+    card.ondragover = e => e.preventDefault();
+    card.ondrop = e => {
+      e.preventDefault(); e.stopPropagation();
+      const from = +e.dataTransfer.getData("text/plain"), to = i;
+      if (from === to) return;
+      photos.splice(to, 0, photos.splice(from, 1)[0]); render();
+    };
+    grid.appendChild(card);
+  });
+}
+
+function updateButtons() {
+  const has = photos.length > 0;
+  $("autoAll").disabled = !has; $("sortName").disabled = !has; $("export").disabled = !has;
+}
+
+function rotatePhoto(i) {
+  const p = photos[i];
+  p.rot = (p.rot + 90) % 360;
+  if (p.corners) { /* CW 旋轉：座標 (x,y)→(1-y,x)，角序 TL→TR→BR→BL→TL */
+    const [tl, tr, br, bl] = p.corners.map(([x, y]) => [1 - y, x]);
+    p.corners = [tr, br, bl, tl];
+  }
+  render();
+}
+
+$("sortName").onclick = () => { photos.sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true })); render(); };
+
+/* ── 解碼：createImageBitmap（解碼在背景）→ canvas 套旋轉與縮放 ── */
+async function decodeToCanvas(p, longEdge) {
+  const bmp = await createImageBitmap(p.file, { imageOrientation: "from-image" });
+  const swap = p.rot % 180 !== 0;
+  const w = swap ? bmp.height : bmp.width, h = swap ? bmp.width : bmp.height;
+  const s = Math.min(1, longEdge / Math.max(w, h));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
+  const ctx = c.getContext("2d");
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.rotate(p.rot * Math.PI / 180);
+  /* 修正：原本只給位置沒給尺寸 → 4032px 原圖被「原尺寸」畫進 900px 畫布 = 只看見中央裁切。
+     必須把縮放比例帶進 drawImage，旋轉交換寬高時也要用對應尺寸。 */
+  const dw = swap ? bmp.height : bmp.width, dh = swap ? bmp.width : bmp.height;
+  ctx.drawImage(bmp, -dw * s / 2, -dh * s / 2, dw * s, dh * s);
+  bmp.close && bmp.close();
+  return { canvas: c, w, h };
+}
+
+/* ── 自動偵測 ── */
+async function autoDetect(i) {
+  const { canvas } = await decodeToCanvas(photos[i], 900);
+  const ctx = canvas.getContext("2d");
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const r = await workerJob("detect", { imageData }, [imageData.data.buffer]);
+  photos[i].corners = r.quad;
+  return r.quad;
+}
+
+$("autoAll").onclick = async () => {
+  try {
+    setStatus("載入 OpenCV 到背景執行緒（第一次約 10～30 秒，頁面不會卡）…");
+    await ensureWorker();
+  } catch (e) { setStatus(e.message + "——自動偵測不能用，仍可手動拖四角與輸出。"); return; }
+  let ok = 0; const fails = [];
+  for (let i = 0; i < photos.length; i++) {
+    setStatus(`自動偵測 ${i + 1}/${photos.length}…`);
+    try { if (await autoDetect(i)) ok++; }
+    catch (e) { console.error(e); fails.push(`${photos[i].name}: ${e.message}`); }
+    render();
+  }
+  setStatus(`偵測完成：${ok}/${photos.length} 張抓到四角。` +
+    (fails.length ? `失敗：${fails.slice(0, 3).join("；")}${fails.length > 3 ? "…" : ""}` : "沒 ✅ 的點「四角」手動拖。"));
+  render();
+};
+
+/* ── 四角編輯器 ── */
+let editIdx = null, editCorners = null;
+const HANDLE_NAMES = ["TL", "TR", "BR", "BL"];
+
+async function openEditor(i) {
+  editIdx = i;
+  const p = photos[i];
+  const { canvas } = await decodeToCanvas(p, 1100);
+  const img = $("editImg");
+  img.src = canvas.toDataURL("image/jpeg", 0.9);
+  $("editor").classList.add("open");
+  await new Promise(r => { if (img.complete) r(); else img.onload = r; });
+  editCorners = p.corners ? p.corners.map(c => [...c]) : defaultCorners();
+  sizeEditorImage();
+  await new Promise(r => requestAnimationFrame(r)); /* 等 layout 落定再畫 handles */
+  drawHandles();
+}
+
+function sizeEditorImage() {
+  const img = $("editImg");
+  if (!img.naturalWidth) return;
+  const maxW = window.innerWidth * 0.92, maxH = window.innerHeight * 0.74;
+  const s = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+  img.style.width = Math.floor(img.naturalWidth * s) + "px";
+  img.style.height = "auto";
+}
+
+window.addEventListener("resize", () => {
+  if (!$("editor").classList.contains("open")) return;
+  sizeEditorImage();
+  requestAnimationFrame(drawHandles);
+});
+
+function defaultCorners() { return [[0.02, 0.02], [0.98, 0.02], [0.98, 0.98], [0.02, 0.98]]; }
+
+function drawQuadOnly() {
+  const img = $("editImg"), qc = $("quadCanvas");
+  const rect = img.getBoundingClientRect();
+  const rw = rect.width, rh = rect.height;
+  qc.width = rw; qc.height = rh;
+  qc.style.width = rw + "px"; qc.style.height = rh + "px";
+  const ctx = qc.getContext("2d");
+  ctx.strokeStyle = "#8ab4f8"; ctx.lineWidth = 2;
+  const px = editCorners.map(([x, y]) => [x * rw, y * rh]);
+  ctx.beginPath(); px.forEach(([x, y], j) => j ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+  ctx.closePath(); ctx.stroke();
+}
+
+function drawHandles() {
+  const stage = $("stage");
+  stage.querySelectorAll(".handle").forEach(h => h.remove());
+  const rect = $("editImg").getBoundingClientRect();
+  const rw = rect.width, rh = rect.height;
+  drawQuadOnly();
+  editCorners.forEach(([x, y], j) => {
+    const d = document.createElement("div");
+    d.className = "handle"; d.style.background = HANDLE_COLORS[j]; d.title = HANDLE_NAMES[j];
+    d.style.left = x * rw + "px"; d.style.top = y * rh + "px";
+    dragHandle(d, j, rw, rh);
+    stage.appendChild(d);
+  });
+}
+
+function dragHandle(el, j, rw, rh) {
+  const move = e => {
+    const r = $("editImg").getBoundingClientRect();
+    let x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    x = Math.min(1, Math.max(0, x)); y = Math.min(1, Math.max(0, y));
+    editCorners[j] = [x, y];
+    el.style.left = x * rw + "px"; el.style.top = y * rh + "px";
+    drawQuadOnly();
+    e.preventDefault();
+  };
+  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+  el.onpointerdown = e => { window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); };
+}
+
+$("autoOne").onclick = async () => {
+  try { await ensureWorker(); } catch (e) { setStatus(e.message); return; }
+  const quad = await autoDetect(editIdx);
+  editCorners = quad ? quad.map(c => [...c]) : defaultCorners();
+  setStatus(quad ? "偵測到四角，微調後套用。" : "沒偵測到，請手動拖四角。");
+  drawHandles();
+};
+$("resetCorners").onclick = () => { editCorners = defaultCorners(); drawHandles(); };
+$("applyEdit").onclick = () => {
+  photos[editIdx].corners = editCorners.map(c => [...c]);
+  $("editor").classList.remove("open");
+  render();
+};
+$("editor").onclick = e => { if (e.target === $("editor")) $("editor").classList.remove("open"); };
+window.addEventListener("keydown", e => { if (e.key === "Escape") $("editor").classList.remove("open"); });
+
+/* ── 輸出 PDF ── */
+async function renderPage(p, longEdge, quality) {
+  /* 1600px 中繼 →（有 corners 就）worker warp → 縮到 longEdge → JPEG */
+  let workCanvas = (await decodeToCanvas(p, 1600)).canvas;
+  if (p.corners) {
+    const ctx = workCanvas.getContext("2d");
+    const imageData = ctx.getImageData(0, 0, workCanvas.width, workCanvas.height);
+    const r = await workerJob("warp", { imageData, corners: p.corners }, [imageData.data.buffer]);
+    workCanvas = imageDataToCanvas(r.imageData);
+  }
+  const final = document.createElement("canvas");
+  const s = Math.min(1, longEdge / Math.max(workCanvas.width, workCanvas.height));
+  final.width = Math.max(1, Math.round(workCanvas.width * s));
+  final.height = Math.max(1, Math.round(workCanvas.height * s));
+  final.getContext("2d").drawImage(workCanvas, 0, 0, final.width, final.height);
+  const blob = await new Promise(r => final.toBlob(r, "image/jpeg", quality));
+  return { blob, w: final.width, h: final.height };
+}
+
+function imageDataToCanvas(imgData) {
+  const c = document.createElement("canvas");
+  c.width = imgData.width; c.height = imgData.height;
+  c.getContext("2d").putImageData(imgData, 0, 0);
+  return c;
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result); r.onerror = rej;
+    r.readAsDataURL(blob);
+  });
+}
+
+$("export").onclick = async () => {
+  const longEdge = Math.max(200, +$("longEdge").value || 1000);
+  const quality = Math.min(1, Math.max(0.05, +$("quality").value || 0.35));
+  if (!photos.length) return;
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) { setStatus("jsPDF 沒載到（需要網路）——重新整理再試。"); return; }
+  const pdf = new jsPDF({ unit: "px", format: [1, 1], compress: true });
+  let skipped = 0;
+  $("progressWrap").style.display = "block";
+  for (let i = 0; i < photos.length; i++) {
+    setStatus(`處理 ${i + 1}/${photos.length}：${photos[i].name}`);
+    try {
+      const { blob, w, h } = await renderPage(photos[i], longEdge, quality);
+      const url = await blobToDataUrl(blob);
+      if (i === 0) { pdf.deletePage(1); pdf.addPage([w, h]); }
+      else pdf.addPage([w, h]);
+      pdf.addImage(url, "JPEG", 0, 0, w, h);
+    } catch (e) { console.error(e); skipped++; setStatus(`這張失敗，跳過：${photos[i].name}（${e.message}）`); }
+    $("progressFill").style.width = ((i + 1) / photos.length * 100) + "%";
+    await new Promise(r => setTimeout(r, 0));
+  }
+  const d = new Date(), pad = n => String(n).padStart(2, "0");
+  const fname = `slides-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.pdf`;
+  pdf.save(fname);
+  setStatus(`完成 → ${fname}（${photos.length - skipped} 頁${skipped ? `，跳過 ${skipped} 張` : ""}）`);
+  setTimeout(() => { $("progressWrap").style.display = "none"; $("progressFill").style.width = 0; }, 1500);
+};
+</script>
+</body>
+</html>

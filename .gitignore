@@ -1,0 +1,7 @@
+*.jpg
+*.JPG
+*.png
+*.pdf
+*.shortcut
+.DS_Store
+__pycache__/
