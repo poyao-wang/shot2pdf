@@ -71,7 +71,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.4.8-dev</div>
+<div class="ver" id="verTag">v0.4.9-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -89,11 +89,11 @@
       <label><input type="radio" name="pxPreset" value="1000" checked>1000</label>
       <label><input type="radio" name="pxPreset" value="2000">2000</label>
       <label><input type="radio" name="pxPreset" value="500">500</label>
-      <label><input type="radio" name="pxPreset" value="custom">custom <input id="longEdge" type="number" value="1000" min="200" max="4000"></label>
+      <label><input type="radio" name="pxPreset" value="custom">custom <input id="longEdge" type="number" inputmode="numeric" pattern="[0-9]*" value="1000" min="200" max="4000"></label>
       <span class="unit">px</span>
     </span>
   </span>
-  <span class="setting">品質 <input id="quality" type="number" value="0.35" min="0.05" max="1" step="0.05"></span>
+  <span class="setting">品質 <input id="quality" type="number" inputmode="decimal" value="0.35" min="0.05" max="1" step="0.05"></span>
   <div class="toolbar-row">
     <button id="export" class="primary" disabled>產出 PDF</button>
     <button id="exportZip" disabled>產出 ZIP（校正圖）</button>
