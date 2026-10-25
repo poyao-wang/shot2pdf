@@ -14,6 +14,7 @@
   body { background: var(--bg); color: var(--text); font-family: -apple-system, "PingFang TC", sans-serif; padding: 16px; }
   h1 { font-size: 18px; margin-bottom: 4px; }
   .sub { color: var(--dim); font-size: 12px; margin-bottom: 14px; }
+  .ver { display: inline-block; font-size: 11px; color: var(--accent); background: rgba(138,180,248,.12); border: 1px solid rgba(138,180,248,.35); border-radius: 10px; padding: 1px 8px; margin-bottom: 12px; font-family: ui-monospace, monospace; }
   #drop {
     border: 2px dashed var(--border); border-radius: 10px; padding: 28px; text-align: center;
     color: var(--dim); cursor: pointer; transition: border-color .15s;
@@ -55,6 +56,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
+<div class="ver" id="verTag">v0.2.0-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
