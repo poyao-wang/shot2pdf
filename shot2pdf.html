@@ -77,7 +77,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.5.8-dev</div>
+<div class="ver" id="verTag">v0.5.10-dev</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -321,6 +321,9 @@ async function refreshWarpedThumb(i) {
   const p = photos[i];
   if (!p.corners) return;
   try {
+    /* v0.5.9：跳過「自動偵測全部」直接手修四角時，worker 可能還沒生。
+       在這裡惰性載入 OpenCV，手動校正縮圖不依賴先跑過自動偵測。 */
+    try { await ensureWorker(); } catch (e) { console.error("worker:", e); return; }
     const { canvas } = await decodeToCanvas(p, 1600);
     const ctx = canvas.getContext("2d");
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -492,7 +495,11 @@ window.addEventListener("resize", () => {
   requestAnimationFrame(drawHandles);
 });
 
-function defaultCorners() { return [[0.02, 0.02], [0.98, 0.02], [0.98, 0.98], [0.02, 0.98]]; }
+function defaultCorners() {
+  /* v0.5.10：預設四角貼滿整張圖（0/1），不再內縮 2%——
+     直接按「四角」→「套用」＝原圖不裁切；要留白邊自己拖。 */
+  return [[0, 0], [1, 0], [1, 1], [0, 1]];
+}
 
 function drawQuadOnly() {
   const img = $("editImg"), qc = $("quadCanvas");
@@ -624,20 +631,38 @@ $("autoOne").onclick = async () => {
   drawHandles();
 };
 $("resetCorners").onclick = () => { editCorners = defaultCorners(); drawHandles(); };
-$("applyEdit").onclick = () => {
+$("applyEdit").onclick = async () => {
   photos[editIdx].corners = editCorners.map(c => [...c]);
   photos[editIdx].thumbWarped = false; /* 套用新四角 → 縮圖重生成校正版 */
   $("editor").classList.remove("open");
   render();
+  /* v0.5.9：套用後立刻重生成該張校正縮圖（等 render 的背景 job 搶先做也無妨，
+     這裡主動做一次讓「手動修正」馬上看得到效果，不必先按自動偵測） */
+  try { await ensureWorker(); await refreshWarpedThumb(editIdx); render(); }
+  catch (e) { setStatus("校正縮圖生成失敗：" + e.message); }
 };
 $("editor").onclick = e => { if (e.target === $("editor")) $("editor").classList.remove("open"); };
 window.addEventListener("keydown", e => { if (e.key === "Escape") $("editor").classList.remove("open"); });
 
 /* ── 輸出 PDF ── */
 async function renderPage(p, longEdge, quality) {
-  /* 1600px 中繼 →（有 corners 就）worker warp → 縮到 longEdge → JPEG */
-  let workCanvas = (await decodeToCanvas(p, 1600)).canvas;
+  /* 中繼解碼：上限 1600，但保證「目標軸」解碼後至少有 v px——
+     v0.5.9 fix：極端長寬比（全頁截圖 1204x3922 這種）在 width 模式下，
+     舊版固定 1600 長邊中繼會把寬軸壓到 ~490px，之後「只縮不放大」讓
+     使用者設 1000px 也被卡死。改為先粗測原圖長寬比，把中繼長邊拉高到
+     max(1600, v * (longAxis/shortAxis))，讓目標軸解碼後 >= v。 */
+  let workCanvas;
+  {
+    const probe = await decodeToCanvas(p, 200); /* 只為量長寬比，200px 足夠 */
+    const ratio = Math.max(probe.w, probe.h) / Math.max(1, Math.min(probe.w, probe.h));
+    const { mode: pm, v: pv } = typeof longEdge === "object" ? longEdge : { mode: "long", v: longEdge };
+    /* 目標軸對應到原圖的哪一邊 → 中繼長邊需要多大才能讓該軸 >= v */
+    const needLong = Math.min(6000, Math.max(1600, Math.round(pv * ratio)));
+    workCanvas = (await decodeToCanvas(p, needLong)).canvas;
+  }
   if (p.corners) {
+    /* v0.5.9：手動四角未跑過自動偵測也能輸出——輸出前惰性載 worker */
+    await ensureWorker();
     const ctx = workCanvas.getContext("2d");
     const imageData = ctx.getImageData(0, 0, workCanvas.width, workCanvas.height);
     const r = await workerJob("warp", { imageData, corners: p.corners }, [imageData.data.buffer]);
