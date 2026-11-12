@@ -1,6 +1,8 @@
 *.jpg
 *.JPG
 *.png
+!apple-touch-icon.png
+!favicon-64.png
 *.pdf
 *.shortcut
 .DS_Store
