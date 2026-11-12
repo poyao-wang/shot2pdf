@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -39,6 +39,8 @@
   button.primary { background: var(--accent); color: #101418; border-color: var(--accent); font-weight: 600; }
   .setting { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
   .setting label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; user-select: none; white-space: nowrap; }
+  * { touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  img { -webkit-user-drag: none; }
   .setting input[type="radio"] { accent-color: var(--accent); cursor: pointer; margin: 0; }
   /* 手機寬度：尺寸模式列允許換行、label 不拆字 */
   .sizemode { flex-wrap: wrap; row-gap: 4px; }
@@ -80,7 +82,7 @@
 <body>
 <h1>shot2pdf</h1>
 <div class="sub">拖入整批拍照圖片（slides／發票／文件）→ 自動四角補正（可手修）→ resize＋壓縮 → 一個 PDF。照片全程在本機處理；OpenCV 在背景執行緒跑，頁面不會卡。</div>
-<div class="ver" id="verTag">v0.5.12</div>
+<div class="ver" id="verTag">v0.5.13</div>
 
 <div id="drop">把照片拖進來（或點選檔案）— 可一次整批</div>
 <input id="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -286,6 +288,12 @@ function workerJob(cmd, payload, transfer) {
 }
 
 /* ── 匯入 ── */
+// 防 iOS Safari 縮放（捏合 user-scalable=no 擋不住）與雙擊
+document.addEventListener('gesturestart',  e => e.preventDefault());
+document.addEventListener('gesturechange', e => e.preventDefault());
+document.addEventListener('gestureend',    e => e.preventDefault());
+document.addEventListener('dblclick',      e => e.preventDefault(), {passive: false});
+
 drop.onclick = () => fileInput.click();
 drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
 drop.ondragleave = () => drop.classList.remove("over");
